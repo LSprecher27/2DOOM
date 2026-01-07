@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DOOM 2D: SAFE SPAWNS</title>
+    <title>DOOM 2D: FINAL VERSION</title>
     <style>
         body, html { 
             margin: 0; padding: 0; width: 100%; height: 100%; 
@@ -20,6 +20,13 @@
         }
         .stat { color: #fff; text-shadow: 0 0 5px #ff0000; }
         .label { color: #888; margin-right: 5px; }
+
+        /* WATERMARK STYLE */
+        #watermark {
+            position: absolute; bottom: 10px; right: 15px;
+            color: rgba(255, 255, 255, 0.3); font-size: 14px;
+            z-index: 100; pointer-events: none; text-decoration: none;
+        }
         
         #radio-container { position: absolute; top: 70px; right: 20px; background: rgba(20, 20, 20, 0.9); border: 2px solid #ff4444; padding: 12px; color: white; font-size: 12px; z-index: 101; }
         .radio-btn { background: #ff4444; color: black; border: none; padding: 5px; margin-top: 10px; cursor: pointer; font-weight: bold; width: 100%; text-transform: uppercase; }
@@ -50,6 +57,8 @@
 
     <div id="damage-flash"></div>
     <div id="now-playing">NOW PLAYING: <span id="track-title">NONE</span></div>
+    
+    <div id="watermark">https://github.com/LSprecher27</div>
 
     <div id="start-menu" class="overlay">
         <div class="menu-title">DOOM 2D</div>
@@ -128,32 +137,22 @@ function spawnLevel() {
         walls.push({x:cx*50, y:cy*50}, {x:(cx+1)*50, y:cy*50}, {x:cx*50, y:(cy+1)*50}, {x:(cx+1)*50, y:(cy+1)*50});
     }
 
-    // FIXED PLAYER SPAWN
+    // SAFE PLAYER SPAWN
     let px, py;
-    do {
-        px = Math.random() * (canvas.width - 200) + 100;
-        py = Math.random() * (canvas.height - 200) + 100;
-    } while (isWall(px, py));
-    player.x = px;
-    player.y = py;
+    do { px = Math.random() * (canvas.width - 200) + 100; py = Math.random() * (canvas.height - 200) + 100; } while (isWall(px, py));
+    player.x = px; player.y = py;
 
-    // FIXED ENEMY SPAWN
+    // SAFE ENEMY SPAWN
     for(let i=0; i<5+currentLevel; i++) {
         let ex, ey;
-        do {
-            ex = Math.random() * (canvas.width - 200) + 100;
-            ey = Math.random() * (canvas.height - 200) + 100;
+        do { ex = Math.random() * (canvas.width - 200) + 100; ey = Math.random() * (canvas.height - 200) + 100;
         } while (isWall(ex, ey) || Math.hypot(ex - player.x, ey - player.y) < 250);
         enemies.push({x: ex, y: ey, hp: 60});
     }
 
-    const pTypes = ['ammo', 'hp', 'berserk'];
-    pTypes.forEach(type => {
+    ['ammo', 'hp', 'berserk'].forEach(type => {
         let pickX, pickY;
-        do {
-            pickX = Math.random() * (canvas.width - 200) + 100;
-            pickY = Math.random() * (canvas.height - 200) + 100;
-        } while (isWall(pickX, pickY));
+        do { pickX = Math.random() * (canvas.width - 200) + 100; pickY = Math.random() * (canvas.height - 200) + 100; } while (isWall(pickX, pickY));
         pickups.push({x: pickX, y: pickY, type: type});
     });
 }
