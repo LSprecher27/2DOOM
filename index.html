@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DOOM 2D: FINAL VERSION</title>
+    <title>2DOOM</title>
     <style>
         body, html { 
             margin: 0; padding: 0; width: 100%; height: 100%; 
@@ -106,22 +106,26 @@ const trackNames = {
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-let player = { x: 150, y: 150, health: 100, ammo: 30, lastShot: 0, berserk: 0 };
+let player = { x: 150, y: 150, health: 100, ammo: 30, lastShot: 0, berserk: 0, radius: 20 };
 let enemies = [], projectiles = [], bloodSplats = [], pickups = [], walls = [], shells = [], floorDetails = [];
 let keys = {}, mousePos = {x:0, y:0}, gameStarted = false, isPaused = false, currentLevel = 1, killCount = 0, screenShake = 0, muzzleFlash = 0, gameTicks = 0;
 
 function resize() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-    if(gameStarted) spawnLevel();
 }
 window.addEventListener('resize', resize);
 resize();
 
-function isWall(x, y) { return walls.some(w => x >= w.x && x < w.x+50 && y >= w.y && y < w.y+50); }
+function isWall(x, y, radius = 5) { 
+    return walls.some(w => (
+        x + radius > w.x && x - radius < w.x + 50 && 
+        y + radius > w.y && y - radius < w.y + 50
+    )); 
+}
 
 function spawnLevel() {
-    walls = []; floorDetails = []; enemies = []; pickups = []; shells = [];
+    walls = []; floorDetails = []; enemies = []; pickups = []; shells = []; bloodSplats = [];
     const tw = Math.ceil(canvas.width / 50), th = Math.ceil(canvas.height / 50);
 
     for(let x=0; x<tw; x++) {
@@ -137,22 +141,31 @@ function spawnLevel() {
         walls.push({x:cx*50, y:cy*50}, {x:(cx+1)*50, y:cy*50}, {x:cx*50, y:(cy+1)*50}, {x:(cx+1)*50, y:(cy+1)*50});
     }
 
-    // SAFE PLAYER SPAWN
-    let px, py;
-    do { px = Math.random() * (canvas.width - 200) + 100; py = Math.random() * (canvas.height - 200) + 100; } while (isWall(px, py));
+    let px, py, attempts = 0;
+    do { 
+        px = Math.random() * (canvas.width - 200) + 100; 
+        py = Math.random() * (canvas.height - 200) + 100; 
+        attempts++;
+    } while (isWall(px, py, 25) && attempts < 100);
     player.x = px; player.y = py;
 
-    // SAFE ENEMY SPAWN
     for(let i=0; i<5+currentLevel; i++) {
-        let ex, ey;
-        do { ex = Math.random() * (canvas.width - 200) + 100; ey = Math.random() * (canvas.height - 200) + 100;
-        } while (isWall(ex, ey) || Math.hypot(ex - player.x, ey - player.y) < 250);
-        enemies.push({x: ex, y: ey, hp: 60});
+        let ex, ey, eAttempts = 0;
+        do { 
+            ex = Math.random() * (canvas.width - 200) + 100; 
+            ey = Math.random() * (canvas.height - 200) + 100;
+            eAttempts++;
+        } while ((isWall(ex, ey, 20) || Math.hypot(ex - player.x, ey - player.y) < 250) && eAttempts < 100);
+        enemies.push({x: ex, y: ey, hp: 60, radius: 20});
     }
 
     ['ammo', 'hp', 'berserk'].forEach(type => {
-        let pickX, pickY;
-        do { pickX = Math.random() * (canvas.width - 200) + 100; pickY = Math.random() * (canvas.height - 200) + 100; } while (isWall(pickX, pickY));
+        let pickX, pickY, pAttempts = 0;
+        do { 
+            pickX = Math.random() * (canvas.width - 200) + 100; 
+            pickY = Math.random() * (canvas.height - 200) + 100; 
+            pAttempts++;
+        } while (isWall(pickX, pickY, 15) && pAttempts < 100);
         pickups.push({x: pickX, y: pickY, type: type});
     });
 }
@@ -176,26 +189,48 @@ function startGame() {
     document.getElementById('start-menu').style.display = 'none';
     gameStarted = true;
     spawnLevel();
-    loop();
+    requestAnimationFrame(loop);
 }
 
 function togglePause() {
-    if(!gameStarted) return;
+    if(!gameStarted || player.health <= 0) return;
     isPaused = !isPaused;
     document.getElementById('pause-menu').style.display = isPaused ? 'flex' : 'none';
-    if(!isPaused) loop();
+    if(!isPaused) requestAnimationFrame(loop);
+}
+
+// NEW: Game Over function injected via JS
+function showGameOver() {
+    gameStarted = false;
+    const over = document.createElement('div');
+    over.className = 'overlay';
+    over.innerHTML = `
+        <div class="menu-title">YOU DIED</div>
+        <div style="color:white; font-size:24px; margin-bottom:20px;">KILLS: ${killCount} | LEVEL: ${currentLevel}</div>
+        <button class="menu-btn" onclick="location.reload()">Try Again</button>
+    `;
+    document.body.appendChild(over);
 }
 
 function loop() {
     if(!gameStarted || isPaused) return;
     gameTicks++;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
     ctx.save();
-    if(screenShake > 0) { ctx.translate((Math.random()-0.5)*screenShake, (Math.random()-0.5)*screenShake); screenShake *= 0.85; }
+    if(screenShake > 0) { 
+        ctx.translate((Math.random()-0.5)*screenShake, (Math.random()-0.5)*screenShake); 
+        screenShake *= 0.9; 
+    }
     
     ctx.fillStyle = '#0a0a0a'; ctx.fillRect(0,0,canvas.width,canvas.height);
-    floorDetails.forEach(d => { ctx.fillStyle = '#0f0f0f'; ctx.fillRect(d.x, d.y, 48, 48); });
+    ctx.fillStyle = '#0f0f0f'; floorDetails.forEach(d => { ctx.fillRect(d.x, d.y, 48, 48); });
 
-    ctx.fillStyle = '#aa8800'; shells.forEach(s => { ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.r); ctx.fillRect(-2,-1,4,2); ctx.restore(); });
+    ctx.fillStyle = '#aa8800'; 
+    if(shells.length > 50) shells.shift();
+    shells.forEach(s => { ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.r); ctx.fillRect(-2,-1,4,2); ctx.restore(); });
+    
+    if(bloodSplats.length > 200) bloodSplats.shift();
     bloodSplats.forEach(b => { ctx.fillStyle=b.c; ctx.beginPath(); ctx.arc(b.x, b.y, b.s, 0, Math.PI*2); ctx.fill(); });
 
     walls.forEach(w => {
@@ -204,11 +239,17 @@ function loop() {
     });
 
     let speed = player.berserk > 0 ? 6.5 : 4.0;
-    let mx = 0, my = 0;
-    if(keys['w']) my -= speed; if(keys['s']) my += speed;
-    if(keys['a']) mx -= speed; if(keys['d']) mx += speed;
-    if(!isWall(player.x + mx, player.y)) player.x += mx;
-    if(!isWall(player.x, player.y + my)) player.y += my;
+    let dx = 0, dy = 0;
+    if(keys['w']) dy -= 1; if(keys['s']) dy += 1;
+    if(keys['a']) dx -= 1; if(keys['d']) dx += 1;
+
+    if (dx !== 0 || dy !== 0) {
+        let angle = Math.atan2(dy, dx);
+        let mx = Math.cos(angle) * speed;
+        let my = Math.sin(angle) * speed;
+        if(!isWall(player.x + mx, player.y, player.radius)) player.x += mx;
+        if(!isWall(player.x, player.y + my, player.radius)) player.y += my;
+    }
 
     pickups = pickups.filter(p => {
         if(Math.hypot(player.x-p.x, player.y-p.y) < 35) {
@@ -223,25 +264,34 @@ function loop() {
 
     projectiles = projectiles.filter(p => {
         p.x += Math.cos(p.a)*p.s; p.y += Math.sin(p.a)*p.s; p.l--;
+        let hit = false;
         enemies.forEach(e => {
-            if(Math.hypot(p.x-e.x, p.y-e.y) < 25) {
-                e.hp -= 15; p.l = 0;
-                for(let i=0; i<8; i++) bloodSplats.push({x:e.x+(Math.random()-0.5)*15, y:e.y+(Math.random()-0.5)*15, s:Math.random()*5+2, c:'#900'});
+            if(!hit && Math.hypot(p.x-e.x, p.y-e.y) < e.radius + 5) {
+                e.hp -= 15; p.l = 0; hit = true;
+                for(let i=0; i<5; i++) bloodSplats.push({x:e.x+(Math.random()-0.5)*15, y:e.y+(Math.random()-0.5)*15, s:Math.random()*5+2, c:'#900'});
             }
         });
         ctx.fillStyle='#ff0'; ctx.beginPath(); ctx.arc(p.x, p.y, 2.5, 0, 7); ctx.fill();
-        return p.l > 0 && !isWall(p.x, p.y);
+        return p.l > 0 && !isWall(p.x, p.y, 2);
     });
 
     enemies = enemies.filter(e => {
         let a = Math.atan2(player.y-e.y, player.x-e.x);
-        if(!isWall(e.x+Math.cos(a)*2.2, e.y+Math.sin(a)*2.2)) { e.x+=Math.cos(a)*2.2; e.y+=Math.sin(a)*2.2; }
-        if(Math.hypot(e.x-player.x, e.y-player.y) < 30) { 
-            player.health -= 0.6; 
+        let ex = Math.cos(a) * 2.2;
+        let ey = Math.sin(a) * 2.2;
+        if(!isWall(e.x + ex, e.y, e.radius)) e.x += ex;
+        if(!isWall(e.x, e.y + ey, e.radius)) e.y += ey;
+
+        if(Math.hypot(e.x-player.x, e.y-player.y) < 35) { 
+            player.health -= 0.5; 
             document.getElementById('damage-flash').style.display = 'block';
-            setTimeout(() => document.getElementById('damage-flash').style.display = 'none', 40);
+            setTimeout(() => document.getElementById('damage-flash').style.display = 'none', 30);
         }
-        if(e.hp <= 0) { killCount++; return false; }
+        if(e.hp <= 0) { 
+            killCount++; 
+            for(let i=0; i<15; i++) bloodSplats.push({x:e.x, y:e.y, s:Math.random()*8+2, c:'#700'});
+            return false; 
+        }
         drawFlippedSprite(assets.enemy, e.x, e.y, player.x, player.y, 50, '#cc0000');
         return true;
     });
@@ -249,22 +299,28 @@ function loop() {
     if(muzzleFlash > 0) {
         let pA = Math.atan2(mousePos.y-player.y, mousePos.x-player.x);
         ctx.save(); ctx.translate(player.x, player.y); ctx.rotate(pA);
-        ctx.fillStyle = '#ff0'; ctx.beginPath(); ctx.arc(35, 0, 10, 0, Math.PI*2); ctx.fill(); 
+        ctx.fillStyle = '#ff0'; ctx.beginPath(); ctx.arc(35, 0, 12, 0, Math.PI*2); ctx.fill(); 
         ctx.restore(); muzzleFlash--;
     }
 
     drawFlippedSprite(assets.player, player.x, player.y, mousePos.x, mousePos.y, 60, '#2e7d32');
 
     if(player.berserk > 0) player.berserk--;
-    if(enemies.length === 0) { currentLevel++; spawnLevel(); }
-    if(player.health <= 0) location.reload();
+    if(gameStarted && enemies.length === 0) { currentLevel++; spawnLevel(); }
+    
+    // Death Check
+    if(player.health <= 0) { 
+        showGameOver(); 
+        return; 
+    }
 
-    document.getElementById('health').innerText = Math.ceil(player.health);
+    document.getElementById('health').innerText = Math.max(0, Math.ceil(player.health));
     document.getElementById('ammo').innerText = player.ammo;
     document.getElementById('kills').innerText = killCount;
     document.getElementById('level-num').innerText = currentLevel;
 
-    ctx.restore(); requestAnimationFrame(loop);
+    ctx.restore(); 
+    requestAnimationFrame(loop);
 }
 
 let isRadioMode = false;
@@ -272,33 +328,48 @@ function playTrack() {
     if(!isRadioMode) return;
     let n = Math.floor(Math.random()*8)+1;
     bgMusic.src = `audio/track${n}.mp3`;
-    bgMusic.play().then(() => {
-        document.getElementById('track-title').innerText = trackNames[n];
-        document.getElementById('now-playing').classList.add('show');
-        setTimeout(() => document.getElementById('now-playing').classList.remove('show'), 4000);
-    }).catch(e => {});
+    bgMusic.play().catch(e => {});
 }
+bgMusic.onplay = () => {
+    const trackId = bgMusic.src.match(/track(\d+)/)[1];
+    document.getElementById('track-title').innerText = trackNames[trackId];
+    document.getElementById('now-playing').classList.add('show');
+    setTimeout(() => document.getElementById('now-playing').classList.remove('show'), 4000);
+};
 bgMusic.onended = playTrack;
-document.getElementById('skip-btn').onclick = playTrack;
+document.getElementById('skip-btn').onclick = () => { if(isRadioMode) playTrack(); };
+
 document.querySelectorAll('input[name="track"]').forEach(r => r.onchange = e => { 
-    isRadioMode = (e.target.value==='radio'); if(isRadioMode) playTrack(); else bgMusic.pause(); 
+    isRadioMode = (e.target.value==='radio'); 
+    if(isRadioMode) playTrack(); else bgMusic.pause(); 
 });
 
 window.addEventListener('keydown', e => {
-    if(e.key.toLowerCase() === 'p' || e.key === 'Escape') togglePause();
-    keys[e.key.toLowerCase()] = true;
+    let k = e.key.toLowerCase();
+    if(k === 'p' || k === 'escape') togglePause();
+    keys[k] = true;
 });
 window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 window.addEventListener('mousemove', e => { mousePos.x = e.clientX; mousePos.y = e.clientY; });
+
 window.addEventListener('mousedown', () => {
     if(isPaused || player.ammo <= 0 || !gameStarted) return;
     const now = Date.now();
-    if(now - player.lastShot < (player.berserk > 0 ? 200 : 750)) return;
+    const cooldown = player.berserk > 0 ? 150 : 600;
+    if(now - player.lastShot < cooldown) return;
+    
     player.lastShot = now;
-    player.ammo--; screenShake = 12; muzzleFlash = 3;
+    player.ammo--; screenShake = 10; muzzleFlash = 3;
     shells.push({x: player.x, y: player.y, r: Math.random()*7});
+    
     let baseAngle = Math.atan2(mousePos.y-player.y, mousePos.x-player.x);
-    for(let i=0; i<10; i++) projectiles.push({x:player.x, y:player.y, a:baseAngle+(Math.random()-0.5)*0.4, s:18+Math.random()*5, l:45});
+    for(let i=0; i<10; i++) {
+        projectiles.push({
+            x: player.x, y: player.y, 
+            a: baseAngle + (Math.random()-0.5)*0.3, 
+            s: 15 + Math.random()*5, l: 40
+        });
+    }
 });
 </script>
 </body>
